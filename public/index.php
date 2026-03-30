@@ -220,7 +220,7 @@ $recurringEntries = [];
 $selectedTransaction = null;
 $selectedIncome = null;
 $currentGoal = 0.0;
-$categoryBudgets = [];
+$budgetVsActual = [];
 
 if ($isAuth) {
     $userId = (int) currentUserId();
@@ -242,7 +242,7 @@ if ($isAuth) {
     $selectedTransaction = $editTransactionId > 0 ? getTransactionById($userId, $editTransactionId) : null;
     $selectedIncome = $editIncomeId > 0 ? getExtraIncomeById($userId, $editIncomeId) : null;
     $currentGoal = getMonthlyGoal($userId, $selectedMonth);
-    $categoryBudgets = getCategoryBudgetsByMonth($userId, $selectedMonth);
+    $budgetVsActual = getBudgetVsActualByCategory($userId, $selectedMonth);
     $recurringEntries = getRecurringEntries($userId);
 
     $exportType = (string) ($_GET['export'] ?? '');
@@ -284,284 +284,8 @@ if ($isAuth) {
     <?php if ($isAuth): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php endif; ?>
-    <style>
-        :root {
-            color-scheme: light;
-            --bg: #f3f6ff;
-            --card: rgba(255, 255, 255, 0.82);
-            --card-solid: #ffffff;
-            --primary: #4f46e5;
-            --primary-dark: #3730a3;
-            --accent: #0ea5e9;
-            --text: #0f172a;
-            --muted: #64748b;
-            --ok: #15803d;
-            --error: #b91c1c;
-            --border: #dbe4ff;
-            --shadow: 0 20px 50px rgba(79, 70, 229, 0.16);
-        }
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            background:
-                radial-gradient(circle at 10% 8%, rgba(79, 70, 229, 0.14), transparent 30%),
-                radial-gradient(circle at 90% 0%, rgba(14, 165, 233, 0.15), transparent 32%),
-                linear-gradient(180deg, #eef2ff 0%, #f7f9ff 100%),
-                var(--bg);
-            color: var(--text);
-            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 1120px;
-            margin: 38px auto;
-            padding: 0 16px 36px;
-        }
-        .card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 22px;
-            box-shadow: var(--shadow);
-            backdrop-filter: blur(8px);
-        }
-        .section-title {
-            margin-bottom: 4px;
-        }
-        .section-subtitle {
-            margin-bottom: 14px;
-            font-size: 14px;
-        }
-        .grid {
-            display: grid;
-            gap: 16px;
-        }
-        .grid-2 {
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }
-        h1, h2, h3 { margin-top: 0; letter-spacing: -0.01em; }
-        h1 { font-size: 34px; margin-bottom: 6px; line-height: 1.06; }
-        h2 { font-size: 24px; }
-        h3 { font-size: 20px; }
-        p { color: var(--muted); margin-top: 0; }
-        label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #334155;
-        }
-        input, select, button {
-            width: 100%;
-            padding: 12px 13px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            font-size: 14px;
-            transition: all .2s ease;
-            background: #fff;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: #93c5fd;
-            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-        }
-        button {
-            border: 0;
-            background: linear-gradient(180deg, var(--primary), var(--primary-dark) 120%);
-            color: #fff;
-            font-weight: 700;
-            cursor: pointer;
-            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.25);
-        }
-        button:hover { transform: translateY(-2px); filter: brightness(1.03); }
-        button.secondary {
-            background: linear-gradient(180deg, #64748b, #475569);
-            box-shadow: none;
-        }
-        .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        .mt-12 { margin-top: 12px; }
-        .mt-16 { margin-top: 16px; }
-        .summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 12px;
-        }
-        .metric {
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 12px;
-            background: linear-gradient(180deg, #f8fbff, #f2f6ff);
-            position: relative;
-            overflow: hidden;
-        }
-        .metric::after {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: linear-gradient(180deg, var(--primary), var(--accent));
-        }
-        .metric strong { display: block; margin-top: 5px; font-size: 18px; color: #1e1b8f; }
-        .flash {
-            margin-bottom: 14px;
-            padding: 12px 14px;
-            border-radius: 10px;
-            border: 1px solid;
-            font-weight: 600;
-        }
-        .flash.ok { color: var(--ok); border-color: #b7e4c7; background: #effcf3; }
-        .flash.error { color: var(--error); border-color: #fecaca; background: #fef2f2; }
-        .flash.hide { opacity: 0; transform: translateY(-4px); transition: .25s ease; }
-        .table-wrap {
-            overflow-x: auto;
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            background: var(--card-solid);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-            background: #fff;
-        }
-        th, td {
-            text-align: left;
-            padding: 12px 10px;
-            border-bottom: 1px solid var(--border);
-            white-space: nowrap;
-        }
-        th {
-            color: var(--muted);
-            font-weight: 700;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: .05em;
-            background: #f5f8ff;
-        }
-        .badge {
-            display: inline-block;
-            border-radius: 999px;
-            padding: 5px 9px;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        .badge.cost { background: #e8f0ff; color: #1d4ed8; }
-        .badge.expense { background: #fff4e5; color: #b45309; }
-        .header-actions {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            margin-bottom: 16px;
-        }
-        .header-actions p {
-            margin-bottom: 0;
-            max-width: 620px;
-        }
-        .quick-help {
-            margin: 0 0 16px;
-            color: #334155;
-            font-size: 14px;
-            background: linear-gradient(90deg, #eef6ff, #f7f3ff);
-            border: 1px dashed #b9ccff;
-            padding: 11px 13px;
-            border-radius: 10px;
-        }
-        .btn-danger {
-            background: linear-gradient(180deg, #ef4444, #dc2626);
-            box-shadow: none;
-        }
-        .chart-caption {
-            margin-top: 8px;
-            font-size: 13px;
-            color: var(--muted);
-        }
-        .empty-state {
-            text-align: center;
-            color: #64748b;
-            padding: 22px 12px;
-            font-size: 14px;
-        }
-        .brand-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: linear-gradient(90deg, rgba(79, 70, 229, 0.15), rgba(14, 165, 233, 0.12));
-            color: #312e81;
-            border: 1px solid #c7d2fe;
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: .05em;
-            text-transform: uppercase;
-            padding: 6px 10px;
-            border-radius: 999px;
-            margin-bottom: 8px;
-        }
-        .brand-badge::before {
-            content: "";
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: linear-gradient(180deg, var(--primary), var(--accent));
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
-        }
-        .auth-shell {
-            display: grid;
-            gap: 18px;
-        }
-        .hero-copy {
-            max-width: 680px;
-            margin-bottom: 2px;
-        }
-        .hero-copy p {
-            font-size: 15px;
-        }
-        .tabs {
-            display: inline-flex;
-            gap: 8px;
-            padding: 6px;
-            border: 1px solid var(--border);
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.7);
-            margin-bottom: 16px;
-        }
-        .tab-link {
-            text-decoration: none;
-            color: #475569;
-            font-weight: 700;
-            font-size: 13px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            transition: all .2s ease;
-        }
-        .tab-link:hover {
-            background: #eef2ff;
-            color: #312e81;
-        }
-        .tab-link.active {
-            background: linear-gradient(180deg, var(--primary), var(--primary-dark) 120%);
-            color: #fff;
-            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2);
-        }
-        .submit-loading {
-            opacity: 0.75;
-            pointer-events: none;
-            cursor: wait;
-        }
-        @media (max-width: 680px) {
-            .container { margin-top: 22px; }
-            h1 { font-size: 28px; }
-            .row { grid-template-columns: 1fr; }
-            th, td { padding: 10px 8px; }
-        }
-    </style>
+    <link rel="stylesheet" href="/assets/css/app.css">
+
 </head>
 <body>
     <div class="container">
@@ -590,8 +314,16 @@ if ($isAuth) {
         <?php if ($isAuth): ?>
             <nav class="tabs" aria-label="Abas do dashboard">
                 <a class="tab-link <?= $tab === 'dashboard' ? 'active' : '' ?>" href="/?tab=dashboard">Visao geral</a>
-                <a class="tab-link <?= $tab === 'monthly' ? 'active' : '' ?>" href="/?tab=monthly">Gastos por mes</a>
+                <a class="tab-link <?= $tab === 'monthly' ? 'active' : '' ?>" href="/?tab=monthly">Gastos por Mês</a>
             </nav>
+            <?php if ($tab === 'dashboard'): ?>
+                <div class="quick-actions">
+                    <a class="quick-chip" href="#form-lancamento">+ Lancamento</a>
+                    <a class="quick-chip" href="#form-receita">+ Receita extra</a>
+                    <a class="quick-chip" href="#form-recorrencia">+ Recorrente</a>
+                    <a class="quick-chip" href="#historico-lancamentos">Historico</a>
+                </div>
+            <?php endif; ?>
             <p class="quick-help">Dica: salve seu salario, adicione receitas extras quando houver, e lance custos/gastos para acompanhar seu saldo real.</p>
         <?php endif; ?>
 
@@ -631,13 +363,13 @@ if ($isAuth) {
             <?php if ($tab === 'monthly'): ?>
                 <div class="grid">
                     <section class="card">
-                        <h2>Gastos por mes</h2>
+                        <h2>Gastos por Mês</h2>
                         <p class="section-subtitle">Acompanhe a evolucao mensal dos seus custos e gastos.</p>
                         <canvas id="monthlyChart" height="120"></canvas>
                     </section>
                     <section class="card">
                         <h3>Resumo mensal</h3>
-                        <p class="section-subtitle">Consolidado por mes com base na receita total (salario + receitas extras).</p>
+                        <p class="section-subtitle">Consolidado por Mês com base na receita total (salario + receitas extras).</p>
                         <p style="margin-bottom: 14px;">
                             <a class="tab-link active" href="/?tab=monthly&export=monthly" style="display:inline-block;">Exportar em Excel (.csv)</a>
                         </p>
@@ -645,12 +377,12 @@ if ($isAuth) {
                             <table>
                                 <thead>
                                 <tr>
-                                    <th>Mes</th>
+                                    <th>Mês</th>
                                     <th>Receitas extras</th>
                                     <th>Custos</th>
                                     <th>Gastos</th>
                                     <th>Total</th>
-                                    <th>Saldo do mes</th>
+                                    <th>Saldo do Mês</th>
                                     <th>% da receita total</th>
                                 </tr>
                                 </thead>
@@ -678,9 +410,9 @@ if ($isAuth) {
             <?php else: ?>
             <div class="grid">
                 <section class="grid grid-2">
-                    <article class="card">
+                    <article class="card" id="form-recorrencia">
                         <h3 class="section-title">Contas recorrentes automáticas</h3>
-                        <p class="section-subtitle">Configure contas que devem ser lancadas automaticamente todo mes.</p>
+                        <p class="section-subtitle">Configure contas que devem ser lancadas automaticamente todo Mês.</p>
                         <form method="post">
                             <input type="hidden" name="action" value="add_recurring_entry">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
@@ -700,14 +432,14 @@ if ($isAuth) {
                                     <input type="number" step="0.01" min="0.01" name="amount" required>
                                 </div>
                                 <div>
-                                    <label>Dia do mes</label>
+                                    <label>Dia do Mês</label>
                                     <input type="number" min="1" max="31" name="day_of_month" value="<?= date('d') ?>" required>
                                 </div>
                             </div>
                             <button class="mt-16">Salvar recorrencia</button>
                         </form>
                     </article>
-                    <article class="card">
+                    <article class="card" id="form-lancamento">
                         <h3>Recorrencias cadastradas</h3>
                         <div class="table-wrap">
                             <table>
@@ -761,14 +493,14 @@ if ($isAuth) {
                 </section>
 
                 <section class="grid grid-2">
-                    <article class="card">
+                    <article class="card" id="form-receita">
                         <h3 class="section-title">Meta mensal</h3>
-                        <p class="section-subtitle">Defina quanto deseja guardar no mes selecionado.</p>
+                        <p class="section-subtitle">Defina quanto deseja guardar no Mês selecionado.</p>
                         <form method="post">
                             <input type="hidden" name="action" value="save_monthly_goal">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                             <input type="hidden" name="return_tab" value="<?= htmlspecialchars($tab) ?>">
-                            <label>Mes de referencia</label>
+                            <label>Mês de referencia</label>
                             <input type="month" name="month_key" value="<?= htmlspecialchars($selectedMonth) ?>" required>
                             <label class="mt-12">Meta de economia (R$)</label>
                             <input type="number" step="0.01" min="0" name="target_amount" value="<?= htmlspecialchars((string) $currentGoal) ?>" required>
@@ -777,12 +509,12 @@ if ($isAuth) {
                     </article>
                     <article class="card">
                         <h3 class="section-title">Orcamento por categoria</h3>
-                        <p class="section-subtitle">Defina limite por categoria para o mes selecionado.</p>
+                        <p class="section-subtitle">Defina limite por categoria para o Mês selecionado.</p>
                         <form method="post">
                             <input type="hidden" name="action" value="save_category_budget">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                             <input type="hidden" name="return_tab" value="<?= htmlspecialchars($tab) ?>">
-                            <label>Mes de referencia</label>
+                            <label>Mês de referencia</label>
                             <input type="month" name="month_key" value="<?= htmlspecialchars($selectedMonth) ?>" required>
                             <label class="mt-12">Categoria</label>
                             <select name="category_id" required>
@@ -798,8 +530,8 @@ if ($isAuth) {
                     </article>
                 </section>
 
-                <section class="card">
-                    <h2>Resumo do mes</h2>
+                <section class="card" id="historico-lancamentos">
+                    <h2>Resumo do Mês</h2>
                     <div class="summary">
                         <div class="metric">Salario<strong>R$ <?= number_format((float) $totals['salary'], 2, ',', '.') ?></strong></div>
                         <div class="metric">Receitas extras<strong>R$ <?= number_format((float) $totals['extra_incomes'], 2, ',', '.') ?></strong></div>
@@ -967,29 +699,49 @@ if ($isAuth) {
                 </section>
 
                 <section class="card">
-                    <h3>Orcamentos por categoria (<?= htmlspecialchars(date('m/Y', strtotime($selectedMonth . '-01'))) ?>)</h3>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                            <tr>
-                                <th>Categoria</th>
-                                <th>Orcamento</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <?php if (empty($categoryBudgets)): ?>
-                                <tr><td colspan="2"><div class="empty-state">Nenhum orcamento configurado para este mes.</div></td></tr>
-                            <?php else: ?>
-                                <?php foreach ($categoryBudgets as $budget): ?>
-                                    <tr>
-                                        <td><?= htmlspecialchars((string) $budget['category_name']) ?></td>
-                                        <td>R$ <?= number_format((float) $budget['budget_amount'], 2, ',', '.') ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                    <h3>Orçamento vs real por categoria (<?= htmlspecialchars(date('m/Y', strtotime($selectedMonth . '-01'))) ?>)</h3>
+                    <p class="section-subtitle">Barras: verde até 85% do orçamento, amarelo até 100%, vermelho acima do orçamento. Ajuste o Mês de referência nas metas acima.</p>
+                    <?php if (empty($budgetVsActual)): ?>
+                        <div class="empty-state">Nenhum dado neste Mês: defina orçamentos por categoria ou lance gastos com categoria.</div>
+                    <?php else: ?>
+                        <div class="budget-v-list">
+                            <?php foreach ($budgetVsActual as $row): ?>
+                                <?php
+                                $b = (float) $row['budget'];
+                                $s = (float) $row['spent'];
+                                $st = (string) $row['status'];
+                                $pct = (float) $row['percent_of_budget'];
+                                $bw = (float) $row['bar_width'];
+                                $badge = match ($st) {
+                                    'ok' => ['label' => 'Dentro do plano', 'class' => 'ok'],
+                                    'warn' => ['label' => 'Atenção', 'class' => 'warn'],
+                                    'over' => ['label' => 'Acima do orçamento', 'class' => 'over'],
+                                    default => ['label' => 'Sem orçamento', 'class' => 'none'],
+                                };
+                                ?>
+                                <div class="budget-v-row">
+                                    <div class="budget-v-head">
+                                        <strong><?= htmlspecialchars((string) $row['category_name']) ?></strong>
+                                        <span class="budget-v-badge <?= htmlspecialchars($badge['class']) ?>"><?= htmlspecialchars($badge['label']) ?></span>
+                                    </div>
+                                    <div class="budget-v-meta">
+                                        Real: <strong>R$ <?= number_format($s, 2, ',', '.') ?></strong>
+                                        <?php if ($b > 0): ?>
+                                            &nbsp;·&nbsp; Orçamento: <strong>R$ <?= number_format($b, 2, ',', '.') ?></strong>
+                                            &nbsp;·&nbsp; <?= number_format($pct, 1, ',', '.') ?>% usado
+                                        <?php else: ?>
+                                            &nbsp;·&nbsp; Orçamento não definido para esta categoria
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($b > 0): ?>
+                                        <div class="budget-v-bar mt-12">
+                                            <div class="budget-v-fill status-<?= htmlspecialchars($st) ?>" style="width: <?= min(100, max(0, $bw)) ?>%;"></div>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </section>
 
                 <section class="card">
@@ -998,7 +750,7 @@ if ($isAuth) {
                     <form method="get" class="row" style="margin-bottom: 12px;">
                         <input type="hidden" name="tab" value="dashboard">
                         <div>
-                            <label>Filtrar por mes</label>
+                            <label>Filtrar por Mês</label>
                             <input type="month" name="month" value="<?= htmlspecialchars($filterMonth) ?>">
                         </div>
                         <div>
@@ -1073,95 +825,29 @@ if ($isAuth) {
     </div>
 
     <?php if ($isAuth && $tab === 'dashboard'): ?>
-    <script>
-        const salary = <?= json_encode((float) $totals['salary']) ?>;
-        const extraIncomes = <?= json_encode((float) $totals['extra_incomes']) ?>;
-        const totalIncome = salary + extraIncomes;
-        const costs = <?= json_encode((float) $totals['costs']) ?>;
-        const expenses = <?= json_encode((float) $totals['expenses']) ?>;
-        const remaining = Math.max(0, totalIncome - costs - expenses);
-
-        const chart = new Chart(document.getElementById('salaryPieChart'), {
-            type: 'pie',
-            data: {
-                labels: ['Custos fixos', 'Gastos', 'Saldo'],
-                datasets: [{
-                    data: [costs, expenses, remaining],
-                    backgroundColor: ['#1f6feb', '#d17700', '#0f9d58']
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: 'bottom' }
-                }
-            }
-        });
-    </script>
+    <nav class="mobile-fabbar" aria-label="Atalhos rapidos mobile">
+        <a href="#form-lancamento">+ Lanc</a>
+        <a href="#form-receita">+ Receita</a>
+        <a href="#form-recorrencia">+ Recorr</a>
+        <a href="#historico-lancamentos">Historico</a>
+    </nav>
     <?php endif; ?>
-    <?php if ($isAuth && $tab === 'monthly'): ?>
-    <script>
-        const monthlyRows = <?= json_encode($monthlySpending) ?>;
-        const monthLabels = monthlyRows.map(item => item.month_key).reverse();
-        const monthExtraIncomes = monthlyRows.map(item => Number(item.total_extra_incomes)).reverse();
-        const monthCosts = monthlyRows.map(item => Number(item.total_costs)).reverse();
-        const monthExpenses = monthlyRows.map(item => Number(item.total_expenses)).reverse();
 
-        const monthlyCtx = document.getElementById('monthlyChart');
-        if (monthlyCtx) {
-            new Chart(monthlyCtx, {
-                type: 'bar',
-                data: {
-                    labels: monthLabels,
-                    datasets: [
-                        {
-                            label: 'Receitas extras',
-                            data: monthExtraIncomes,
-                            backgroundColor: '#16a34a'
-                        },
-                        {
-                            label: 'Custos',
-                            data: monthCosts,
-                            backgroundColor: '#4f46e5'
-                        },
-                        {
-                            label: 'Gastos',
-                            data: monthExpenses,
-                            backgroundColor: '#0ea5e9'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { position: 'bottom' }
-                    },
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
-        }
-    </script>
-    <?php endif; ?>
-    <script>
-        const flashBox = document.querySelector('.flash');
-        if (flashBox) {
-            setTimeout(() => {
-                flashBox.classList.add('hide');
-                setTimeout(() => flashBox.remove(), 260);
-            }, 2800);
-        }
-
-        document.querySelectorAll('form').forEach(form => {
-            form.addEventListener('submit', () => {
-                const submitButton = form.querySelector('button[type="submit"], button:not([type])');
-                if (submitButton) {
-                    submitButton.classList.add('submit-loading');
-                    submitButton.disabled = true;
-                }
-            });
-        });
-    </script>
+    <?php
+    $granaflowPage = ['tab' => $tab];
+    if ($isAuth && $tab === 'dashboard') {
+        $granaflowPage['dashboardChart'] = [
+            'salary' => (float) $totals['salary'],
+            'extraIncomes' => (float) $totals['extra_incomes'],
+            'costs' => (float) $totals['costs'],
+            'expenses' => (float) $totals['expenses'],
+        ];
+    }
+    if ($isAuth && $tab === 'monthly') {
+        $granaflowPage['monthlyRows'] = $monthlySpending;
+    }
+    ?>
+    <script>window.__GRANAFLOW__ = <?= json_encode($granaflowPage, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+    <script src="/assets/js/app.js" defer></script>
 </body>
 </html>

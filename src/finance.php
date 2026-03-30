@@ -585,3 +585,96 @@ function getCategoryBudgetsByMonth(int $userId, string $monthKey): array
     $stmt->execute(['user_id' => $userId, 'month_key' => $monthKey]);
     return $stmt->fetchAll() ?: [];
 }
+
+/**
+ * Orçado vs real por categoria no mês (custos + gastos com categoria).
+ * Retorna linhas com budget, spent, percentual do orçamento e status visual (ok|warn|over|none).
+ */
+function getBudgetVsActualByCategory(int $userId, string $monthKey): array
+{
+    if (preg_match('/^\d{4}-\d{2}$/', $monthKey) !== 1) {
+        return [];
+    }
+
+    $stmt = db()->prepare(
+        'SELECT t.category_id, c.name AS category_name, COALESCE(SUM(t.amount), 0) AS spent
+         FROM transactions t
+         INNER JOIN categories c ON c.id = t.category_id
+         WHERE t.user_id = :user_id
+           AND DATE_FORMAT(t.transaction_date, "%Y-%m") = :month_key
+         GROUP BY t.category_id, c.name'
+    );
+    $stmt->execute(['user_id' => $userId, 'month_key' => $monthKey]);
+    $spentRows = $stmt->fetchAll() ?: [];
+
+    $spentByCat = [];
+    foreach ($spentRows as $r) {
+        $cid = (int) $r['category_id'];
+        $spentByCat[$cid] = [
+            'category_id' => $cid,
+            'category_name' => (string) $r['category_name'],
+            'spent' => (float) $r['spent'],
+        ];
+    }
+
+    $budgets = getCategoryBudgetsByMonth($userId, $monthKey);
+    $merged = [];
+
+    foreach ($budgets as $b) {
+        $cid = (int) $b['category_id'];
+        $budget = (float) $b['budget_amount'];
+        $spent = $spentByCat[$cid]['spent'] ?? 0.0;
+        $merged[$cid] = [
+            'category_id' => $cid,
+            'category_name' => (string) $b['category_name'],
+            'budget' => $budget,
+            'spent' => $spent,
+        ];
+    }
+
+    foreach ($spentByCat as $cid => $data) {
+        if (!isset($merged[$cid])) {
+            $merged[$cid] = [
+                'category_id' => $cid,
+                'category_name' => $data['category_name'],
+                'budget' => 0.0,
+                'spent' => $data['spent'],
+            ];
+        }
+    }
+
+    $out = [];
+    foreach ($merged as $row) {
+        $budget = $row['budget'];
+        $spent = $row['spent'];
+        $pct = 0.0;
+        $status = 'none';
+        $barWidth = 0.0;
+
+        if ($budget > 0) {
+            $pct = ($spent / $budget) * 100;
+            if ($pct <= 85) {
+                $status = 'ok';
+            } elseif ($pct <= 100) {
+                $status = 'warn';
+            } else {
+                $status = 'over';
+            }
+            $barWidth = min(100.0, $pct);
+        } elseif ($spent > 0) {
+            $status = 'none';
+            $barWidth = 0.0;
+        }
+
+        $row['percent_of_budget'] = $pct;
+        $row['status'] = $status;
+        $row['bar_width'] = $barWidth;
+        $out[] = $row;
+    }
+
+    usort($out, static function (array $a, array $b): int {
+        return strcmp((string) $a['category_name'], (string) $b['category_name']);
+    });
+
+    return $out;
+}
