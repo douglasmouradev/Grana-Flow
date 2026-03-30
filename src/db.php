@@ -14,7 +14,7 @@ function db(): PDO
 
     $host = env('DB_HOST', '127.0.0.1');
     $port = env('DB_PORT', '3306');
-    $name = env('DB_NAME', 'custo');
+    $name = env('DB_NAME', 'custoflow');
     $user = env('DB_USER', 'root');
     $pass = env('DB_PASS', '');
 
