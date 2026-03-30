@@ -1,0 +1,7 @@
+; aaPanel / hospedagem com open_basedir só em public/: copie este arquivo para .user.ini
+; e defina a RAIZ do projeto (pasta que contém src e public), depois reinicie PHP-FPM.
+;
+;   cp .user.ini.example .user.ini
+;   nano .user.ini   (ajuste o primeiro caminho se o domínio for outro)
+;
+open_basedir=/www/wwwroot/granaflow.tdesksolutions.com.br/:/tmp/
